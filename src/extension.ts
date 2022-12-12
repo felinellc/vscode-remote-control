@@ -61,9 +61,21 @@ const startWebsocketServer = async (host: string, port: number, fallbackPorts: n
 				if (event && event.data && event.data) {
 					const wsData: CommandData = JSON.parse(event.data as string);
 					const args = wsData.args;
-
-					if (wsData.command === "vscode.open" || 
-							wsData.command === "vscode.openFolder") {
+					
+					if (wsData.command === "message"){
+						switch(args[0]){
+							case "warning":
+								vscode.window.showWarningMessage(args[1]);
+								break;
+							case "error":
+								vscode.window.showErrorMessage(args[1]);
+								break;
+							default:
+								vscode.window.showInformationMessage(args[0]);
+						}
+						return;
+					}
+					else if (wsData.command === "vscode.open" || wsData.command === "vscode.openFolder") {
 						if (args && args[0]) {
 							args[0] = vscode.Uri.file(args[0]);
 						}
