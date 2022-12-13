@@ -8,6 +8,7 @@ import url from 'url';
 
 let wss: WebSocket.Server | null = null;
 let ws: WebSocket | null = null;
+let server: http.Server | null = null;
 
 const EXTENSION_ID: string = "eliostruyf.vscode-remote-control";
 const APP_NAME: string = "remoteControl";
@@ -42,7 +43,7 @@ const startWebsocketServer = async (host: string, port: number, fallbackPorts: n
 	}
 
 	// Start the API server
-	const server = http.createServer();
+	server = http.createServer();
 	wss = new WebSocket.Server({ noServer: true });
 
 	server.on('upgrade', function upgrade(request, socket, head) {
@@ -92,6 +93,7 @@ const startWebsocketServer = async (host: string, port: number, fallbackPorts: n
 	});
 
 	server.listen(isInUse ? 0 : port, host, () => {
+		if(!server) return
 		const address = server.address();
 		const verifiedPort = (address as AddressInfo).port;
 		Logger.info(`Remote Control: Listening on "ws://${host}:${verifiedPort}"`);
@@ -118,15 +120,29 @@ const startWebsocketServer = async (host: string, port: number, fallbackPorts: n
 
 	wss.on('close', () => {
 		Logger.info('Closing the ws connection');
+		vscode.window.showWarningMessage("Disconnected");
 	});
 };
 
 export function activate({ subscriptions }: vscode.ExtensionContext) {
-	const config = vscode.workspace.getConfiguration(APP_NAME);
-	const enabled = config.get<number | null>("enable");
-	const host = config.get<string | null>("host");
-	const port = config.get<number | null>("port");
-	const fallbackPorts = config.get<number[] | null>("fallbacks");
+	let config = vscode.workspace.getConfiguration(APP_NAME);
+	let enabled = config.get<number | null>("enable");
+	let host = config.get<string | null>("host");
+	let port = config.get<number | null>("port");
+	let fallbackPorts = config.get<number[] | null>("fallbacks");
+
+	vscode.workspace.onDidChangeConfiguration(e => {
+		vscode.window.showInformationMessage("Configuration Changed")
+        if (e.affectsConfiguration(`${APP_NAME}.port`)) {
+			const config = vscode.workspace.getConfiguration(APP_NAME);
+			port = config.get<number | null>("port");
+			host = config.get<string | null>("host");
+			vscode.window.showInformationMessage("Updating Port to "+port)
+			deactivate();
+			startWebsocketServer(host || "127.0.0.1", port || 3710, (fallbackPorts || []).filter(p => p !== port));
+            vscode.window.showInformationMessage('Restarting');
+        }
+    });
 
 	const openSettings = vscode.commands.registerCommand(`${APP_NAME}.openSettings`, () => {
     vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${EXTENSION_ID}`);
@@ -146,4 +162,5 @@ export function activate({ subscriptions }: vscode.ExtensionContext) {
 export function deactivate() {
 	ws?.close();
 	wss?.close();
+	server?.close();
 }
